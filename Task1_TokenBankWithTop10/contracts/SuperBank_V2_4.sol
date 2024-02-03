@@ -46,7 +46,7 @@ contract SuperBank_V2_4 is Bank {
     function depositToken(address _tokenAddr, uint256 _tokenAmount) public {
         iERC20Token = IERC20(_tokenAddr);
         /* 
-        Considering the design of those functions with the prefix of "safe" in SafeERC20 contract,
+        Considering the design of those functions with the prefix of "safe" in SafeERC20 library,
         if the token does not support safeTransferFrom, it will turn to call transferFrom instead.
         */
         iERC20Token.safeTransferFrom(msg.sender, address(this), _tokenAmount);
@@ -65,7 +65,7 @@ contract SuperBank_V2_4 is Bank {
         IERC20Permit(_tokenAddr).permit(msg.sender, address(this), _tokenAmount, _deadline, _v, _r, _s);
         iERC20Token = IERC20(_tokenAddr);
         /* 
-        Considering the design of those functions with the prefix of "safe" in SafeERC20 contract,
+        Considering the design of those functions with the prefix of "safe" in SafeERC20 library,
         if the token does not support safeTransferFrom, it will turn to call transferFrom instead.
         */
         iERC20Token.safeTransferFrom(msg.sender, address(this), _tokenAmount);
@@ -86,7 +86,7 @@ contract SuperBank_V2_4 is Bank {
             revert insufficientTokenBalance(_tokenAddr, _amount, userTokenBalanceInBank);
         }
         /* 
-        Considering the design of those functions with the prefix of "safe" in SafeERC20 contract,
+        Considering the design of those functions with the prefix of "safe" in SafeERC20 library,
         if the token does not support safeTransfer, it will turn to call transfer instead.
         */
         iERC20Token.safeTransfer(msg.sender, _amount);
