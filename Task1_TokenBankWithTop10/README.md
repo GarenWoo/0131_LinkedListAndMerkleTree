@@ -256,7 +256,7 @@ contract SuperBank_V2_4 is Bank {
         iERC20Token = IERC20(_tokenAddr);
         /* 
         Considering the design of those functions with the prefix of "safe" in SafeERC20 library,
-        if the token does not support safeTransferFrom, it will turn to call transferFrom instead.
+        if the token does not support safeTransferFrom, it will turn to call `transferFrom` instead.
         */
         iERC20Token.safeTransferFrom(msg.sender, address(this), _tokenAmount);
         tokenBalance[_tokenAddr][msg.sender] += _tokenAmount;
@@ -275,7 +275,7 @@ contract SuperBank_V2_4 is Bank {
         iERC20Token = IERC20(_tokenAddr);
         /* 
         Considering the design of those functions with the prefix of "safe" in SafeERC20 library,
-        if the token does not support safeTransferFrom, it will turn to call transferFrom instead.
+        if the token does not support safeTransferFrom, it will turn to call `transferFrom` instead.
         */
         iERC20Token.safeTransferFrom(msg.sender, address(this), _tokenAmount);
         tokenBalance[_tokenAddr][msg.sender] += _tokenAmount;
@@ -296,7 +296,7 @@ contract SuperBank_V2_4 is Bank {
         }
         /* 
         Considering the design of those functions with the prefix of "safe" in SafeERC20 library,
-        if the token does not support safeTransfer, it will turn to call transfer instead.
+        if the token does not support safeTransfer, it will turn to call `transfer` instead.
         */
         iERC20Token.safeTransfer(msg.sender, _amount);
         tokenBalance[_tokenAddr][msg.sender] -= _amount;
