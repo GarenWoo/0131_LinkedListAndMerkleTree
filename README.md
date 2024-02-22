@@ -12,5 +12,5 @@
 
 ![IMG0_Task2](./Task2_WhiteListUsingMerkleTree/images/IMG0_Task2.png)
 
-*（截至 2024.02.03 ，此练习题尚未完成，正在进行中......）*
+**[点击此处访问作业 2 成果](./Task2_WhiteListUsingMerkleTree/README.md)**
 

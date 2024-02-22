@@ -1,0 +1,5 @@
+[
+  "function NFTPermit_PrepareForBuy(address,uint256,uint256,uint8,bytes32,bytes32) returns (bool)",
+  "function NFTPermit_PrepareForList(address,uint256,uint256,uint256,uint8,bytes32,bytes32) returns (bool)",
+  "function launchSpecialOfferWithUniformPrice(bytes32) view returns (bytes)"
+]

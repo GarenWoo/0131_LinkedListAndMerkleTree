@@ -5,21 +5,7 @@ import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import {Nonces} from "@openzeppelin/contracts/utils/Nonces.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
-
-/**
- * @title An interface of ERC721TokenWithPermit which is checked in function supportsInterface.
- *
- * @author Garen Woo
- */
-interface NFTMarket_Standard_Interface_V2 {
-    function NFTPermit_PrepareForBuy(address, uint256, uint256, uint8, bytes32, bytes32) external returns (bool);
-
-    function NFTPermit_PrepareForList(address, uint256, uint256, uint256, uint8, bytes32, bytes32)
-        external
-        returns (bool);
-
-    function launchSpecialOfferWithUniformPrice(bytes32) external view returns (bytes memory);
-}
+import "./NFTMarket_Standard_Interface_V2.sol";
 
 /**
  * @title This ERC721 token has permit checking that simulates a 'white list'. EOAs in the 'white list' can buy NFT from any NFT exchange

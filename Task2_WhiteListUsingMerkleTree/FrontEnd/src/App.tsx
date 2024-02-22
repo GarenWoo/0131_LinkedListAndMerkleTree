@@ -96,6 +96,13 @@ const App = () => {
   const tokenAmount_AirDropOfNFT = useRef<HTMLInputElement>(null);
   const deadline_AirDropOfNFT = useRef<HTMLInputElement>(null);
 
+  // Claim NFT(Multicall):
+  const name_AirDropOfNFT_MultiCall = useRef<HTMLInputElement>(null);
+  const chainId_AirDropOfNFT_MultiCall = useRef<HTMLInputElement>(null);
+  const verifyingContract_AirDropOfNFT_MultiCall = useRef<HTMLInputElement>(null);
+  const spender_AirDropOfNFT_MultiCall = useRef<HTMLInputElement>(null);
+  const tokenAmount_AirDropOfNFT_MultiCall = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     let provider: ethers.BrowserProvider;
     const refreshAccounts = async () => {
@@ -855,11 +862,6 @@ const App = () => {
 
   /**
    * @dev This function is used for building a Merkle tree.
-   *
-   * @param _values the array of arrays that contain two inputs.
-   * @param _leafEncoding the array that contains the string variables corresponding to every array in `_value`
-   *
-   * @notice Both of the two parameters are easily generated in the expected format by the function `obtainaddressForBuildingMerkleTree`.
    */
   const buildMerkleTree = async () => {
     const typeOfAccount: any = typeOfParam0_MerkleTree.current?.value;
@@ -893,6 +895,7 @@ const App = () => {
     const provider = new ethers.BrowserProvider(window.ethereum);
     const signer = await provider.getSigner();
     const queriedInfo = await signer.getAddress();
+    console.log(`queriedInfo: ${queriedInfo}`);
     while (counter < 20 && queriedInfo) {
       try {
         const url = new URL("http://localhost:3001/merkle-proof");
@@ -987,24 +990,105 @@ const App = () => {
   };
 
   const claimNFT_MultiCall = async () => {
-    const NFTMarketAddr = spender_AirDropOfNFT.current?.value;
-    const deadline = deadline_AirDropOfNFT.current?.value;
+    const NFTMarketAddr = spender_AirDropOfNFT_MultiCall.current?.value;
+    const deadline = Date.now() + 900000;
     const whitelistData = await getWhitelistData();
     const { MerkleProof, tokenId, price } = await getMerkleProofAndInfo();
-    const { v, r, s } = await sign_ERC20Permit_AirdropOfNFT();
+    // Start to sign message:
+    const name = name_AirDropOfNFT_MultiCall.current?.value;
+    const version = "1";
+    const chainId = chainId_AirDropOfNFT_MultiCall.current?.value;
+    const verifyingContract = verifyingContract_AirDropOfNFT_MultiCall.current?.value;
+    const spender = NFTMarketAddr;
+    const value = tokenAmount_AirDropOfNFT_MultiCall.current?.value;
     const provider = new ethers.BrowserProvider(window.ethereum);
     const signer = await provider.getSigner();
-    console.log("Signer Address: ", signer.getAddress());
-    const ABI_contract = ["function aggregate() external", "function pushCall_PermitPrePay(bool, uint256, uint256, uint8, bytes32, bytes32) external", "function pushCall_ClaimNFT(bool, uint256, bytes32[] memory, uint256, bytes memory) external"];
-    if (NFTMarketAddr) {
-      const NFTMarketContract = new ethers.Contract(
-        NFTMarketAddr,
-        ABI_contract,
-        signer
+    const owner = await signer.getAddress();
+    const tokenAddress = verifyingContract;
+    const tokenAbi = ["function nonces(address owner) view returns (uint256)"];
+    let ERC721WithPermitContract;
+    let nonce;
+    let v;
+    let r;
+    let s;
+    if (tokenAddress) {
+      ERC721WithPermitContract = new ethers.Contract(
+        tokenAddress,
+        tokenAbi,
+        provider
       );
-      NFTMarketContract.pushCall_PermitPrePay(true, price, deadline, v, r, s);
-      NFTMarketContract.pushCall_ClaimNFT(false, tokenId, MerkleProof, price, whitelistData);
-      NFTMarketContract.aggregate();
+      nonce = await ERC721WithPermitContract.nonces(owner);
+    } else {
+      console.log("Invalid token address");
+    }
+
+    const domain = {
+      name: name,
+      version: version,
+      chainId: chainId,
+      verifyingContract: verifyingContract,
+    };
+
+    const types = {
+      Permit: [
+        { name: "owner", type: "address" },
+        { name: "spender", type: "address" },
+        { name: "value", type: "uint256" },
+        { name: "nonce", type: "uint256" },
+        { name: "deadline", type: "uint256" },
+      ],
+    };
+
+    const message = {
+      owner: owner,
+      spender: spender,
+      value: value,
+      nonce: nonce,
+      deadline: deadline,
+    };
+
+    try {
+      const signedMessage = await signer.signTypedData(domain, types, message);
+      console.log("sign_ERC20TokenApprove_AirDropOfNFT: ", signedMessage);
+      const signatureResult = ethers.Signature.from(signedMessage);
+      v = signatureResult.v;
+      r = signatureResult.r;
+      s = signatureResult.s;
+      console.log("v: ", signatureResult.v);
+      console.log("r: ", signatureResult.r);
+      console.log("s: ", signatureResult.s);
+    } catch (error) {
+      console.error("Error signing permit:", error);
+    }
+    // End
+
+    const ABI_aggregate = ["function aggregate(tuple(address target, bytes callData)[] calls) returns (bytes[])"];
+    const ABI_permitPrePay = ["function permitPrePay(address, uint256, uint256, uint8, bytes32, bytes32) returns (bool)"];
+    const interface_permitPrePay = new ethers.Interface(ABI_permitPrePay);
+    const callData_permitPrePay = interface_permitPrePay.encodeFunctionData("permitPrePay", [owner, price, deadline, v, r, s]);
+    const call_permitPrePay = {
+      target: NFTMarketAddr,
+      callData: callData_permitPrePay
+    };
+
+    const ABI_claimNFT = ["function claimNFT(address, uint256, bytes32[], uint256, bytes)"];
+    const interface_claimNFT = new ethers.Interface(ABI_claimNFT);
+    const callData_claimNFT = interface_claimNFT.encodeFunctionData("claimNFT", [owner, tokenId, MerkleProof, price, whitelistData]);
+    const call_claimNFT = {
+      target: NFTMarketAddr,
+      callData: callData_claimNFT
+    };
+
+    const calls = [call_permitPrePay, call_claimNFT];
+    console.log("calls: ", calls);
+
+    if (NFTMarketAddr) {
+      const NFTMarketContract = new ethers.Contract(NFTMarketAddr, ABI_aggregate, signer);
+      try {
+        await NFTMarketContract.aggregate(calls);
+      } catch(error) {
+        console.error('Error calling contract:', error);
+      }
     }
   };
 
@@ -1219,40 +1303,34 @@ const App = () => {
             </h3>
             {window.ethereum?.isMetaMask && wallet.accounts.length > 0 && (
               <>
-                <label>Token Name:</label>
+                <label>ERC20 Token Name:</label>
                 <input
-                  ref={name_AirDropOfNFT}
+                  ref={name_AirDropOfNFT_MultiCall}
                   placeholder="Token Name"
                   type="text"
                 />
                 <label>ChainId:</label>
                 <input
-                  ref={chainId_AirDropOfNFT}
+                  ref={chainId_AirDropOfNFT_MultiCall}
                   placeholder="ChainId"
                   type="text"
                 />
                 <label>Verifying Contract Address:</label>
                 <input
-                  ref={verifyingContract_AirDropOfNFT}
+                  ref={verifyingContract_AirDropOfNFT_MultiCall}
                   placeholder="Verifying Contract Address"
                   type="text"
                 />
                 <label>NFT Market Address:</label>
                 <input
-                  ref={spender_AirDropOfNFT}
+                  ref={spender_AirDropOfNFT_MultiCall}
                   placeholder="Spender"
                   type="text"
                 />
-                <label>Token Amount:</label>
+                <label>NFT Price(Amount of ERC20 Token):</label>
                 <input
-                  ref={tokenAmount_AirDropOfNFT}
+                  ref={tokenAmount_AirDropOfNFT_MultiCall}
                   placeholder="Token Amount"
-                  type="text"
-                />
-                <label>Deadline:</label>
-                <input
-                  ref={deadline_AirDropOfNFT}
-                  placeholder="Deadline"
                   type="text"
                 />
                 <button onClick={claimNFT_MultiCall}>

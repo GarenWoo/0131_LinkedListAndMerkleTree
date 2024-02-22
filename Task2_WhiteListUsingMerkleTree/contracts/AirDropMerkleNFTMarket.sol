@@ -8,16 +8,7 @@ import "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
-
-interface NFTMarket_Standard_Interface_V2 {
-    function NFTPermit_PrepareForBuy(address, uint256, uint256, uint8, bytes32, bytes32) external returns (bool);
-
-    function NFTPermit_PrepareForList(address, uint256, uint256, uint256, uint8, bytes32, bytes32)
-        external
-        returns (bool);
-
-    function launchSpecialOfferWithUniformPrice(bytes32) external pure returns (bytes memory);
-}
+import "./NFTMarket_Standard_Interface_V2.sol";
 
 /**
  * @title This is a NFT exchange contract that can provide trading for ERC721 Tokens. Various ERC721 tokens are able to be traded here.
@@ -36,7 +27,6 @@ contract AirDropMerkleNFTMarket is IERC721Receiver {
         address target;
         bytes callData;
     }
-    mapping(address user => Call[] calls) internal arrayOfMultiCalls;
 
     event NFTListed(address NFTAddr, uint256 tokenId, uint256 price);
     event NFTDelisted(address NFTAddr, uint256 tokenId);
@@ -45,6 +35,7 @@ contract AirDropMerkleNFTMarket is IERC721Receiver {
     event withdrawBalance(address withdrawer, uint256 withdrawnValue);
     event prepay(address tokenOwner, uint256 tokenAmount);
     event NFTClaimed(address NFTAddr, uint256 tokenId, address user);
+    event callPushed(bytes callData, address user);
 
     error zeroPrice();
     error notOwnerOfNFT();
@@ -54,6 +45,7 @@ contract AirDropMerkleNFTMarket is IERC721Receiver {
     error withdrawalExceedBalance(uint256 withdrawAmount, uint256 balanceAmount);
     error ERC721PermitBoughtByWrongFunction(string calledFunction, string validFunction);
     error expiredSignature(uint256 currentTime, uint256 deadline);
+    error multiCallFail(uint256 index, bytes callData);
 
     using SafeERC20 for IERC20;
 
@@ -208,9 +200,9 @@ contract AirDropMerkleNFTMarket is IERC721Receiver {
      * @dev  supports users to pre-approve `address(this)` with ERC2612(ERC20-Permit) tokens by signing messages off-chain.
      * This function is usually called before calling `claimNFT`.
      */
-    function PermitPrePay(uint256 _tokenAmount, uint256 _deadline, uint8 _v, bytes32 _r, bytes32 _s) public returns (bool) {
-        IERC20Permit(tokenAddr).permit(msg.sender, address(this), _tokenAmount, _deadline, _v, _r, _s);
-        emit prepay(msg.sender, _tokenAmount);
+    function permitPrePay(address _tokenOwner, uint256 _tokenAmount, uint256 _deadline, uint8 _v, bytes32 _r, bytes32 _s) public returns (bool) {
+        IERC20Permit(tokenAddr).permit(_tokenOwner, address(this), _tokenAmount, _deadline, _v, _r, _s);
+        emit prepay(_tokenOwner, _tokenAmount);
         return true;
     }
 
@@ -218,60 +210,37 @@ contract AirDropMerkleNFTMarket is IERC721Receiver {
      * @notice Users who are allowed to get NFTs with agreed prices.
      * The membership of the whitelist should be in the form of a Merkle tree.
      * Before calling this function, the user should approve `address(this)` with sufficient allowance.
-     * The function `PermitPrePay` is recommended for the approval.
+     * The function `permitPrePay` is recommended for the approval.
      *
      * @param _promisedTokenId the tokenId corresponds to the NFT which is specified to a member in the NFT's whitelist
      * @param _merkleProof a dynamic array which contains Merkle proof is used for validating the membership of the caller. This should be offered by the project party
      * @param _promisedPrice the promised price of the NFT corresponding to `_promisedTokenId`, which is one of the fields of each Merkle tree node
      * @param _NFTWhitelistData a bytes variable offered by the owner of NFT Project. it contains the compressed infomation about the NFT whitelist
      */
-    function claimNFT(uint256 _promisedTokenId, bytes32[] memory _merkleProof, uint256 _promisedPrice, bytes memory _NFTWhitelistData)
+    function claimNFT(address _recipient, uint256 _promisedTokenId, bytes32[] memory _merkleProof, uint256 _promisedPrice, bytes memory _NFTWhitelistData)
         public
     {
         (address whitelistNFTAddr, bytes32 MerkleRoot) = abi.decode(_NFTWhitelistData, (address, bytes32));
         // Verify the membership of whitelist using Merkle tree.
-        bytes32 leaf = keccak256(bytes.concat(keccak256(abi.encode(msg.sender, _promisedTokenId, _promisedPrice))));
+        bytes32 leaf = keccak256(bytes.concat(keccak256(abi.encode(_recipient, _promisedTokenId, _promisedPrice))));
         _verifyMerkleProof(_merkleProof, MerkleRoot, leaf);
         // Considering the design of those functions with the prefix of "safe" in SafeERC20 library,
         // if the token does not support `safeTransferFrom`, it will turn to call `transferFrom` instead.
-        IERC20(tokenAddr).safeTransferFrom(msg.sender, address(this), _promisedPrice);
+        IERC20(tokenAddr).safeTransferFrom(_recipient, address(this), _promisedPrice);
         address NFTOwner = IERC721(whitelistNFTAddr).ownerOf(_promisedTokenId);
-        IERC721(whitelistNFTAddr).transferFrom(NFTOwner, msg.sender, _promisedTokenId);
-        emit NFTClaimed(whitelistNFTAddr, _promisedTokenId, msg.sender);
+        IERC721(whitelistNFTAddr).transferFrom(NFTOwner, _recipient, _promisedTokenId);
+        emit NFTClaimed(whitelistNFTAddr, _promisedTokenId, _recipient);
     }
 
-    function aggregate() public returns(uint256 blockNumber, bytes[] memory returnData) {
-        blockNumber = block.number;
-        returnData = new bytes[](arrayOfMultiCalls[msg.sender].length);
-        for (uint256 i = 0; i < arrayOfMultiCalls[msg.sender].length; i++) {
-            (bool success, bytes memory returnBytes) = arrayOfMultiCalls[msg.sender][i].target.call(arrayOfMultiCalls[msg.sender][i].callData);
-            require(success, "Multicall aggregate: call failed");
+    function aggregate(Call[] memory _calls) public returns(bytes[] memory returnData) {
+        returnData = new bytes[](_calls.length);
+        for (uint256 i = 0; i < _calls.length; i++) {
+            (bool success, bytes memory returnBytes) = (_calls[i].target).call(_calls[i].callData);
+            if (!success) {
+                revert multiCallFail(i, _calls[i].callData);
+            }
             returnData[i] = returnBytes;
         }
-    }
-
-    function pushCall_PermitPrePay(bool _resetArrayOfCalls, uint256 _tokenAmount, uint256 _deadline, uint8 _v, bytes32 _r, bytes32 _s) public {
-        bytes memory callData_PermitPrePay = abi.encodeWithSignature("function PermitPrePay(address,uint256,uint256,uint8,bytes32,bytes32)", _tokenAmount, _deadline, _v, _r, _s);
-        Call memory currentCall = Call ({
-            target: address(this),
-            callData: callData_PermitPrePay
-        });
-        if (_resetArrayOfCalls) {
-            delete arrayOfMultiCalls[msg.sender];
-        }
-        arrayOfMultiCalls[msg.sender].push(currentCall);
-    }
-
-    function pushCall_ClaimNFT(bool _resetArrayOfCalls, uint256 _promisedTokenId, bytes32[] memory _merkleProof, uint256 _promisedPrice, bytes memory _NFTWhitelistData) public {
-        bytes memory callData_ClaimNFT = abi.encodeWithSignature("function claimNFT(uint256,bytes32[],uint256,bytes)", _promisedTokenId, _merkleProof, _promisedPrice, _NFTWhitelistData);
-        Call memory currentCall = Call ({
-            target: address(this),
-            callData: callData_ClaimNFT
-        });
-        if (_resetArrayOfCalls) {
-            delete arrayOfMultiCalls[msg.sender];
-        }
-        arrayOfMultiCalls[msg.sender].push(currentCall);
     }
 
     /**
