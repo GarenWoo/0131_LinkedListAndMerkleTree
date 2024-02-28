@@ -229,6 +229,7 @@ contract AirDropMerkleNFTMarket is IERC721Receiver {
         IERC20(tokenAddr).safeTransferFrom(_recipient, address(this), _promisedPrice);
         address NFTOwner = IERC721(whitelistNFTAddr).ownerOf(_promisedTokenId);
         IERC721(whitelistNFTAddr).transferFrom(NFTOwner, _recipient, _promisedTokenId);
+        userProfit[NFTOwner] += _promisedPrice;
         emit NFTClaimed(whitelistNFTAddr, _promisedTokenId, _recipient);
     }
 
@@ -308,9 +309,9 @@ contract AirDropMerkleNFTMarket is IERC721Receiver {
     }
 
     function _updateNFT(address _recipient, address _nftAddr, uint256 _tokenId, uint256 _tokenAmount) internal {
-        userProfit[IERC721(_nftAddr).getApproved(_tokenId)] += _tokenAmount;
         bool _success = IERC20(tokenAddr).transferFrom(_recipient, address(this), _tokenAmount);
         require(_success, "Fail to buy or Allowance is insufficient");
+        userProfit[IERC721(_nftAddr).getApproved(_tokenId)] += _tokenAmount;
         IERC721(_nftAddr).transferFrom(address(this), _recipient, _tokenId);
         delete price[_nftAddr][_tokenId];
         onSale[_nftAddr][_tokenId] = false;

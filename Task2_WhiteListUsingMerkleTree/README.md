@@ -450,6 +450,7 @@
         IERC20(tokenAddr).safeTransferFrom(_recipient, address(this), _promisedPrice);
         address NFTOwner = IERC721(whitelistNFTAddr).ownerOf(_promisedTokenId);
         IERC721(whitelistNFTAddr).transferFrom(NFTOwner, _recipient, _promisedTokenId);
+        userProfit[NFTOwner] += _promisedPrice;
         emit NFTClaimed(whitelistNFTAddr, _promisedTokenId, _recipient);
     }
 ```
