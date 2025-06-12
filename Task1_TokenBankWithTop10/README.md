@@ -1,21 +1,21 @@
-# 练习题（01.31）：练习题 1
+# 向 Bank 中加入存款排名
 
 ![IMG0_Task1](./images/IMG0_Task1.png)
 
-## 1. 练习题相关功能的合约代码与解释
+## A. 相关功能的代码解释
 
 基于原 **`superbank`** 合约添加新功能（使用可迭代的链表保存 token 余额的排名信息），现已升级至 **`superbank_V2_4`** 合约。
 以下仅针对新增功能及其辅助功能做解释：
 
-### 1-1. 双向 mapping 变量的声明
+### 1. 双向 mapping 变量的声明
 
 ```solidity
 // 合约层级声明双向 mapping 状态变量
 mapping(address tokenAddress => mapping(uint256 rankIndex => address userAddress)) internal tokenRankIndexToAddr;
-    mapping(address tokenAddress => mapping(address userAddress => uint256 rankIndex)) internal tokenRankAddrToIndex;
+mapping(address tokenAddress => mapping(address userAddress => uint256 rankIndex)) internal tokenRankAddrToIndex;
 ```
 
-为了在用户存入 token 后可以快速定位到其排名的位置（如果可以跻身排名的话），我采用双向 mapping 变量实现新增功能，两变量分别为“自 index 至 address”的映射（`tokenRankIndexToAddr`）和“自 address 至 index”的映射（`tokenRankAddrToIndex`）。（两者互为逆向映射，且均为嵌套映射；外层的 key 为存入的 ERC20 token 的合约地址，以方便接收多种 token。）
+为了在用户存入 token 后可以快速定位到其排名的位置（如果可以跻身排名的话），我采用双向 mapping 变量实现新增功能，两变量分别为“自 index 至 address”的映射（[**tokenRankIndexToAddr**](./contracts/SuperBank_V2_4.sol#L25)）和“自 address 至 index”的映射（[**tokenRankAddrToIndex**](./contracts/SuperBank_V2_4.sol#L26)）。（两者互为逆向映射，且均为嵌套映射；外层的 key 为存入的 **ERC-20 token** 的合约地址，以方便接收多种 token。）
 
 - `tokenRankIndexToAddr`：根据排名位置直接获得地址；
 - `tokenRankAddrToIndex`：为地址“标记”其排名位置，当该地址对应的用户后续存款且影响了排名，则可以快速获知其排名变动的“出发点”，由此免去了每次存款都要自 mapping 变量的“起点”开始遍历。
@@ -24,12 +24,12 @@ mapping(address tokenAddress => mapping(uint256 rankIndex => address userAddress
 
  注：**`superbank_V2_4`** 合约保留了这两种排名的实现方式：
 
-- `_executeRankMappingOfTokenBalance`方法
-- `_executeRankArrayOfTokenBalance`方法
+- [**_executeRankMappingOfTokenBalance**](./contracts/SuperBank_V2_4.sol#L201-L256)方法
+- [**_executeRankArrayOfTokenBalance**](./contracts/SuperBank_V2_4.sol#L270-L309)方法
 
+---
 
-
-### 1-2. 链表起点的初始化
+### 2. 链表起点的初始化
 
 ```solidity
 // 合约层级声明 origin 地址常量，作为起点地址
@@ -45,12 +45,12 @@ function _executeRankMappingOfTokenBalance(address _tokenAddr, uint256 _amountIn
 }
 ```
 
-- `tokenRankIndexToAddr`“起点”位置的 `index` 为 0 ，地址为`origin`。
-- `tokenRankAddrToIndex`“起点”位置的地址为`origin`， `index` 为 0 。
+- [**tokenRankIndexToAddr**](./contracts/SuperBank_V2_4.sol#L25)“起点”位置的 `index` 为 0 ，地址为`origin`。
+- [**tokenRankAddrToIndex**](./contracts/SuperBank_V2_4.sol#L26)“起点”位置的地址为`origin`， `index` 为 0 。
 
+---
 
-
-### 1-3. 判断存款用户的地址是否已经在排名之中
+### 3. 判断存款用户的地址是否已经在排名之中
 
 ```solidity
 function _executeRankMappingOfTokenBalance(address _tokenAddr, uint256 _amountInRank) internal {
@@ -68,36 +68,36 @@ function _executeRankMappingOfTokenBalance(address _tokenAddr, uint256 _amountIn
     	maxIndexToStartLoop = tokenRankAddrToIndex[_tokenAddr][msg.sender];
       indexToStartMoving = tokenRankAddrToIndex[_tokenAddr][msg.sender];
 	} else {
- 			// 场景 2 ：存款之前，用户不在排名之中
-			maxIndexToStartLoop = _amountInRank + 1;
-			indexToStartMoving = _amountInRank;
+	    // 场景 2 ：存款之前，用户不在排名之中
+	    maxIndexToStartLoop = _amountInRank + 1;
+	    indexToStartMoving = _amountInRank;
   }
 }
 ```
 
-用户是否在排名之中，影响着排名变动的算法（双向 mapping 变量所实现的排名算法为`_executeRankMappingOfTokenBalance`方法）。
+用户是否在排名之中，影响着排名变动的算法（双向 mapping 变量所实现的排名算法为[**_executeRankMappingOfTokenBalance**](./contracts/SuperBank_V2_4.sol#L201-L256) 方法）。
 当某个用户存款且影响了排名时，那些“比该用户余额少但仍在排名之中的用户”将分别向后挪动一个“名次”。这需要循环来实现这样的“挪位操作”，但是循环自身的起始索引的取值因“用户是否在存款前就已经在排名之中”而异（具体见下文关于“挪位操作”的循环的解释）。
 
+---
 
-
-### 1-4. For 循环：查找用户在存款后的排名位置
+### 4. For 循环：查找用户在存款后的排名位置
 
 ```solidity
 function _executeRankMappingOfTokenBalance(address _tokenAddr, uint256 _amountInRank) internal {
-		// 其他逻辑...
-		for (uint256 i = maxIndexToStartLoop; i > 1; i--) {
-				uint256 userBalance = tokenBalance[_tokenAddr][msg.sender];
-				address previousUser = tokenRankIndexToAddr[_tokenAddr][i - 1];
-				uint256 previousUserBalance = tokenBalance[_tokenAddr][previousUser];
-
-				if (userBalance >= previousUserBalance) {
-					// If the current address has won a new index which is in front of the current index of it,
-					// record the new index by the variable `minIndexOccupied`.
-					minIndexOccupied = i - 1;
-				} else {
-					break;
-				}
-		// 其他逻辑...
+    // 其他逻辑...
+    for (uint256 i = maxIndexToStartLoop; i > 1; i--) {
+        uint256 userBalance = tokenBalance[_tokenAddr][msg.sender];
+        address previousUser = tokenRankIndexToAddr[_tokenAddr][i - 1];
+        uint256 previousUserBalance = tokenBalance[_tokenAddr][previousUser];
+        if (userBalance >= previousUserBalance) {
+          // If the current address has won a new index which is in front of the current index of it,
+          // record the new index by the variable `minIndexOccupied`.
+          minIndexOccupied = i - 1;
+          } else {
+            break;
+          }
+    }
+    // 其他逻辑...
 }
 ```
 
@@ -105,19 +105,19 @@ function _executeRankMappingOfTokenBalance(address _tokenAddr, uint256 _amountIn
 
 当某一次循环所比较的“被比较的用户”的余额比当前存款用户的余额高时，则中止并跳出循环。
 
+---
 
-
-### 1-5. 向后挪动“名次低于当前存款用户但位于排名之中的用户”的排名位置
+### 5. 向后挪动“名次低于当前存款用户但位于排名之中的用户”的排名位置
 
 ```solidity
 function _executeRankMappingOfTokenBalance(address _tokenAddr, uint256 _amountInRank) internal {
-		// 其他逻辑...
-		for (uint256 j = indexToStartMoving; j > minIndexOccupied; j--) {
-   			address previousUser = tokenRankIndexToAddr[_tokenAddr][j - 1];
+    // 其他逻辑...
+    for (uint256 j = indexToStartMoving; j > minIndexOccupied; j--) {
+        address previousUser = tokenRankIndexToAddr[_tokenAddr][j - 1];
         tokenRankIndexToAddr[_tokenAddr][j] = previousUser;
         tokenRankAddrToIndex[_tokenAddr][previousUser] = j;
     }
-		// 其他逻辑...
+    // 其他逻辑...
 }
 ```
 
@@ -126,60 +126,60 @@ function _executeRankMappingOfTokenBalance(address _tokenAddr, uint256 _amountIn
 - 若存款用户在存款前已在排名中，则受到“向后挪动的操作”影响的排名用户为“自存款用户原排名位置之前的一名至存款用户新排名位置”（由高位向低位）的所有用户。
 - 若存款用户在存款前未在排名中，则受到“向后挪动的操作”影响的排名用户为“排名末位至存款用户新排名位置”（由高位向低位）的所有用户，原末位的用户将被“挤出”排名。
 
+---
 
-
-### 1-6. 存款用户的新排名位置的链表处理
+### 6. 存款用户的新排名位置的链表处理
 
 ```solidity
 function _executeRankMappingOfTokenBalance(address _tokenAddr, uint256 _amountInRank) internal {
-		// 其他逻辑...
-		if (minIndexOccupied != type(uint256).max - 1) {
-				tokenRankAddrToIndex[_tokenAddr][msg.sender] = minIndexOccupied;
+    // 其他逻辑...
+    if (minIndexOccupied != type(uint256).max - 1) {
+        tokenRankAddrToIndex[_tokenAddr][msg.sender] = minIndexOccupied;
         tokenRankIndexToAddr[_tokenAddr][minIndexOccupied] = msg.sender;
     }
-		// 其他逻辑...
+    // 其他逻辑...
 }
 ```
 
-- `tokenRankAddrToIndex`将该存款用户地址的映射赋值为新排名位置。
+- [**tokenRankAddrToIndex**](./contracts/SuperBank_V2_4.sol#L26) 将该存款用户地址的映射赋值为新排名位置。
 
-- `tokenRankIndexToAddr`将新排名位置的映射赋值该存款用户地址。
+- [**tokenRankIndexToAddr**](./contracts/SuperBank_V2_4.sol#L25) 将新排名位置的映射赋值该存款用户地址。
 
+---
 
-
-### 1-7. 用户存款触发排名算法
+### 7. 用户存款触发排名算法
 
 ```solidity
 // 直接存款（需提前 approve）：触发排名算法
 function depositToken(address _tokenAddr, uint256 _tokenAmount) public {
-        // 存款逻辑和其他逻辑...
-        _handleRankOfTokenBalance(_tokenAddr);
-    }
+    // 存款逻辑和其他逻辑...
+    _handleRankOfTokenBalance(_tokenAddr);
+}
     
 // ERC2612离线签名 + 存款：触发排名算法
 function depositTokenWithPermit(
-        address _tokenAddr,
-        uint256 _tokenAmount,
-        uint256 _deadline,
-        uint8 _v,
-        bytes32 _r,
-        bytes32 _s
-		) public {
-        // 验签逻辑、存款逻辑和其他逻辑...
-        _handleRankOfTokenBalance(_tokenAddr);
-    }
+    address _tokenAddr,
+    uint256 _tokenAmount,
+    uint256 _deadline,
+    uint8 _v,
+    bytes32 _r,
+    bytes32 _s
+) public {
+    // 验签逻辑、存款逻辑和其他逻辑...
+    _handleRankOfTokenBalance(_tokenAddr);
+}
 
 // 该方法包含了用映射实现 token 余额排名的方法
 function _handleRankOfTokenBalance(address _tokenAddr) internal {
-		// 其他逻辑...
-		_executeRankMappingOfTokenBalance(_tokenAddr, limitAmountOfRank[_tokenAddr]);
-		// 其他逻辑...
+    // 其他逻辑...
+    _executeRankMappingOfTokenBalance(_tokenAddr, limitAmountOfRank[_tokenAddr]);
+    // 其他逻辑...
 }
 ```
 
+---
 
-
-### 1-8. 查询当前的 token 余额排名
+### 8. 查询当前的 token 余额排名
 
 ```solidity
 function getTokenRankAccountsByMapping(address _tokenAddr, uint256 _amountInRank)
@@ -187,24 +187,25 @@ function getTokenRankAccountsByMapping(address _tokenAddr, uint256 _amountInRank
         view
         returns (address[] memory)
 	{
-			if (limitAmountOfRank[_tokenAddr] == 0) {
+    if (limitAmountOfRank[_tokenAddr] == 0) {
    				revert noSuchTokenInBank(_tokenAddr);
- 	}
-			if (_amountInRank > limitAmountOfRank[_tokenAddr]) {
- 					revert exceededRankLimit(_tokenAddr, _amountInRank, limitAmountOfRank[_tokenAddr]);
-        }
-			address[] memory rankList = new address[](_amountInRank);
-
-			for (uint256 i = 0; i < _amountInRank; i++) {
-					rankList[i] = tokenRankIndexToAddr[_tokenAddr][i + 1];
-			}
-        return rankList;
+    }
+    if (_amountInRank > limitAmountOfRank[_tokenAddr]) {
+        revert exceededRankLimit(_tokenAddr, _amountInRank, limitAmountOfRank[_tokenAddr]);
+    }
+    address[] memory rankList = new address[](_amountInRank);
+    for (uint256 i = 0; i < _amountInRank; i++) {
+        rankList[i] = tokenRankIndexToAddr[_tokenAddr][i + 1];
+    }
+    return rankList;
 }
 ```
 
+<br />
 
 
-## 2. SuperBank 合约功能解释与完整代码
+
+## B. SuperBank 合约功能解释与完整代码
 
 ```solidity
 // SPDX-License-Identifier: MIT
@@ -535,8 +536,6 @@ contract SuperBank_V2_4 is Bank {
 }
 ```
 
-
-
 ### 附：bank 合约（父合约）代码
 
 ```solidity
@@ -649,3 +648,4 @@ contract Bank {
 }
 ```
 
+------------------------------------------------------ **END** ------------------------------------------------------
