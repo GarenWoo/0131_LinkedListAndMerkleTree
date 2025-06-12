@@ -4,7 +4,7 @@
 
 ## A. 相关功能的代码解释
 
-基于原 **`superbank`** 合约添加新功能（使用可迭代的链表保存 token 余额的排名信息），现已升级至 **`superbank_V2_4`** 合约。
+基于原 **superbank** 合约添加新功能（使用可迭代的链表保存 token 余额的排名信息），现已升级至 **superbank_V2_4** 合约。
 以下仅针对新增功能及其辅助功能做解释：
 
 ### 1. 双向 mapping 变量的声明
@@ -17,12 +17,12 @@ mapping(address tokenAddress => mapping(address userAddress => uint256 rankIndex
 
 为了在用户存入 token 后可以快速定位到其排名的位置（如果可以跻身排名的话），我采用双向 mapping 变量实现新增功能，两变量分别为“自 index 至 address”的映射（[**tokenRankIndexToAddr**](./contracts/SuperBank_V2_4.sol#L25)）和“自 address 至 index”的映射（[**tokenRankAddrToIndex**](./contracts/SuperBank_V2_4.sol#L26)）。（两者互为逆向映射，且均为嵌套映射；外层的 key 为存入的 **ERC-20 token** 的合约地址，以方便接收多种 token。）
 
-- `tokenRankIndexToAddr`：根据排名位置直接获得地址；
-- `tokenRankAddrToIndex`：为地址“标记”其排名位置，当该地址对应的用户后续存款且影响了排名，则可以快速获知其排名变动的“出发点”，由此免去了每次存款都要自 mapping 变量的“起点”开始遍历。
+- [**tokenRankIndexToAddr**](./contracts/SuperBank_V2_4.sol#L25)：根据排名位置直接获得地址；
+- [**tokenRankAddrToIndex**](./contracts/SuperBank_V2_4.sol#L26)：为地址“标记”其排名位置，当该地址对应的用户后续存款且影响了排名，则可以快速获知其排名变动的“出发点”，由此免去了每次存款都要自 mapping 变量的“起点”开始遍历。
 
 以上两个 mapping 变量的组合模拟了“地址数组”的特性，但同时由于数据类型为 mapping，在占用的存储方面，比“地址数组”明显更好。
 
- 注：**`superbank_V2_4`** 合约保留了这两种排名的实现方式：
+ 注：**superbank_V2_4** 合约保留了这两种排名的实现方式：
 
 - [**_executeRankMappingOfTokenBalance**](./contracts/SuperBank_V2_4.sol#L201-L256)方法
 - [**_executeRankArrayOfTokenBalance**](./contracts/SuperBank_V2_4.sol#L270-L309)方法
@@ -36,17 +36,17 @@ mapping(address tokenAddress => mapping(address userAddress => uint256 rankIndex
 address constant origin = address(1);
 
 function _executeRankMappingOfTokenBalance(address _tokenAddr, uint256 _amountInRank) internal {
-// 初始化双向 mapping 变量的起点（地址为`origin`，`index`为 0 ）
-	if (tokenRankIndexToAddr[_tokenAddr][0] == address(0)) {
-   		tokenRankIndexToAddr[_tokenAddr][0] = origin;
-   		tokenRankAddrToIndex[_tokenAddr][origin] = 0;
-	}
-	// 其他逻辑...
+    // 初始化双向 mapping 变量的起点（地址为`origin`，`index`为 0 ）
+    if (tokenRankIndexToAddr[_tokenAddr][0] == address(0)) {
+        tokenRankIndexToAddr[_tokenAddr][0] = origin;
+        tokenRankAddrToIndex[_tokenAddr][origin] = 0;
+    }
+    // 其他逻辑...
 }
 ```
 
-- [**tokenRankIndexToAddr**](./contracts/SuperBank_V2_4.sol#L25)“起点”位置的 `index` 为 0 ，地址为`origin`。
-- [**tokenRankAddrToIndex**](./contracts/SuperBank_V2_4.sol#L26)“起点”位置的地址为`origin`， `index` 为 0 。
+- [**tokenRankIndexToAddr**](./contracts/SuperBank_V2_4.sol#L25)“起点”位置的 `index` 为 0 ，地址为 `origin`。
+- [**tokenRankAddrToIndex**](./contracts/SuperBank_V2_4.sol#L26)“起点”位置的地址为 `origin`， `index` 为 0 。
 
 ---
 
@@ -54,24 +54,24 @@ function _executeRankMappingOfTokenBalance(address _tokenAddr, uint256 _amountIn
 
 ```solidity
 function _executeRankMappingOfTokenBalance(address _tokenAddr, uint256 _amountInRank) internal {
-	// 其他逻辑...
-	bool isInRank = tokenRankAddrToIndex[_tokenAddr][msg.sender] != 0;
+    // 其他逻辑...
+    bool isInRank = tokenRankAddrToIndex[_tokenAddr][msg.sender] != 0;
 	
-	// `maxIndexToStartLoop`，存款用户向前比较余额的用户的最大`index`，即从自身位置开始遍历与比较余额。
-	uint256 maxIndexToStartLoop;
+    // `maxIndexToStartLoop`，存款用户向前比较余额的用户的最大`index`，即从自身位置开始遍历与比较余额。
+    uint256 maxIndexToStartLoop;
 	
-	// `indexToStartMoving`，当某用户存款且影响了排名，比该用户余额少但仍在排名之中的用户均向后挪动一个名次，此变量记录需要挪动的最大的index（自高位至低位逐一执行“向后挪动的操作”）。
-	uint256 indexToStartMoving;
-	// 其他逻辑...
-	if (isInRank) {
-     	// 场景 1 ：存款之前，用户已在排名之中
-    	maxIndexToStartLoop = tokenRankAddrToIndex[_tokenAddr][msg.sender];
-      indexToStartMoving = tokenRankAddrToIndex[_tokenAddr][msg.sender];
-	} else {
-	    // 场景 2 ：存款之前，用户不在排名之中
-	    maxIndexToStartLoop = _amountInRank + 1;
-	    indexToStartMoving = _amountInRank;
-  }
+    // `indexToStartMoving`，当某用户存款且影响了排名，比该用户余额少但仍在排名之中的用户均向后挪动一个名次，此变量记录需要挪动的最大的index（自高位至低位逐一执行“向后挪动的操作”）。
+    uint256 indexToStartMoving;
+    // 其他逻辑...
+    if (isInRank) {
+        // 场景 1 ：存款之前，用户已在排名之中
+        maxIndexToStartLoop = tokenRankAddrToIndex[_tokenAddr][msg.sender];
+        indexToStartMoving = tokenRankAddrToIndex[_tokenAddr][msg.sender];
+    } else {
+        // 场景 2 ：存款之前，用户不在排名之中
+        maxIndexToStartLoop = _amountInRank + 1;
+        indexToStartMoving = _amountInRank;
+    }
 }
 ```
 
@@ -101,7 +101,7 @@ function _executeRankMappingOfTokenBalance(address _tokenAddr, uint256 _amountIn
 }
 ```
 
-当用户存款后，该用户排名位置（若存款前已在排名中）或从排名的末尾（若存款前未在排名中）向前（向低位）逐一进行余额的比较。每一次循环，若当前存款用户“超越”了“被比较的用户”，则使用`minIndexOccupied`记录“已赢取”的排名位置（即“赢取”了“被比较的用户”所在的排名位置）。
+当用户存款后，该用户排名位置（若存款前已在排名中）或从排名的末尾（若存款前未在排名中）向前（向低位）逐一进行余额的比较。每一次循环，若当前存款用户“超越”了“被比较的用户”，则使用局部变量 `minIndexOccupied` 记录“已赢取”的排名位置（即“赢取”了“被比较的用户”所在的排名位置）。
 
 当某一次循环所比较的“被比较的用户”的余额比当前存款用户的余额高时，则中止并跳出循环。
 
@@ -188,7 +188,7 @@ function getTokenRankAccountsByMapping(address _tokenAddr, uint256 _amountInRank
         returns (address[] memory)
 	{
     if (limitAmountOfRank[_tokenAddr] == 0) {
-   				revert noSuchTokenInBank(_tokenAddr);
+        revert noSuchTokenInBank(_tokenAddr);
     }
     if (_amountInRank > limitAmountOfRank[_tokenAddr]) {
         revert exceededRankLimit(_tokenAddr, _amountInRank, limitAmountOfRank[_tokenAddr]);
